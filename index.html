@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Absensi Sync · LP2SSC</title>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+  <style>
+    :root {
+      --bg: #0b1220; --card: #151e2e; --border: #2a3548;
+      --text: #e8eef7; --muted: #8b9bb4; --accent: #3b9eff;
+      --green: #22c55e; --red: #ef4444; --yellow: #eab308; --orange: #f97316;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.45;
+      padding: 12px; max-width: 1100px; margin: 0 auto; font-size: 15px; }
+    h1 { font-size: 1.25rem; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 0.82rem; margin-top: 2px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+    .online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .offline { background: var(--red); }
+
+    input, select, button { font: inherit; padding: 8px 12px; border-radius: 9px;
+      border: 1px solid var(--border); background: #0b1220; color: var(--text); }
+    input:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    button { cursor: pointer; background: var(--accent); color: #fff; font-weight: 600; border: none; white-space: nowrap; }
+    button:hover { filter: brightness(1.12); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    button.danger { background: var(--red); }
+    button.success { background: var(--green); }
+    button.warn { background: var(--orange); }
+
+    .tabs { display: flex; gap: 6px; margin: 14px 0 12px; }
+    .tab { flex: 1; text-align: center; padding: 10px 8px; border-radius: 10px; cursor: pointer;
+      font-weight: 600; font-size: 0.88rem; background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+    .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .dot-H { background: var(--green); }
+    .dot-A { background: var(--red); }
+    .dot-I { background: var(--yellow); }
+    .dot-S { background: var(--orange); }
+    .dot-X { background: #3a4558; }
+    .dot-conflict { box-shadow: 0 0 0 2px var(--red); animation: pulse 1.4s ease infinite; }
+    @keyframes pulse { 0%,100% { box-shadow: 0 0 0 2px rgba(239,68,68,0.7); } 50% { box-shadow: 0 0 0 4px rgba(239,68,68,0.25); } }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 14px; font-size: 0.78rem; color: var(--muted); margin-bottom: 10px; }
+    .legend span { display: flex; align-items: center; gap: 5px; }
+
+    .week-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .week-nav .label { font-weight: 600; font-size: 0.95rem; min-width: 140px; text-align: center; }
+
+    .range-box { background: #0b1220; border: 1px solid rgba(249,115,22,0.45);
+      border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    .range-box .range-title { font-weight: 700; font-size: 0.9rem; color: var(--orange);
+      display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .range-box input[type=date] { flex: 1; min-width: 130px; }
+
+    .person-card { background: #0b1220; border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px; margin-bottom: 10px; }
+    .person-card.has-conflict { border-color: rgba(239,68,68,0.55); background: rgba(239,68,68,0.06); }
+    .person-head { display: flex; justify-content: space-between; align-items: flex-start;
+      gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .person-names { font-weight: 600; font-size: 0.95rem; }
+    .person-names small { display: block; font-weight: 400; color: var(--muted); font-size: 0.75rem; margin-top: 1px; }
+    .conflict-tag { background: var(--red); color: #fff; font-size: 0.7rem;
+      padding: 3px 8px; border-radius: 999px; font-weight: 700; }
+
+    .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .day-col { text-align: center; padding: 6px 2px; border-radius: 8px; background: var(--card);
+      cursor: pointer; transition: background 0.15s; min-width: 0; }
+    .day-col:hover { background: #1c283d; }
+    .day-col.conflict-day { background: rgba(239,68,68,0.15); outline: 1px solid rgba(239,68,68,0.45); }
+    .day-label { font-size: 0.65rem; color: var(--muted); margin-bottom: 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .day-dots { display: flex; justify-content: center; gap: 3px; align-items: center; min-height: 18px; }
+    .day-status-text { font-size: 0.6rem; color: var(--muted); margin-top: 3px; line-height: 1.2; min-height: 1.5em; }
+
+    .bulk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    @media (max-width: 640px) { .bulk-grid { grid-template-columns: 1fr; } .days { gap: 3px; } .day-label { font-size: 0.58rem; } }
+    .bulk-col { background: #0b1220; border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px; max-height: 300px; overflow-y: auto; }
+    .bulk-col h3 { font-size: 0.82rem; color: var(--accent); margin-bottom: 8px;
+      position: sticky; top: 0; background: #0b1220; padding-bottom: 4px; }
+    .check-item { display: flex; align-items: center; gap: 8px; padding: 5px 4px;
+      border-radius: 6px; cursor: pointer; font-size: 0.88rem; }
+    .check-item:hover { background: var(--card); }
+    .check-item input { width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
+    .check-item.already { opacity: 0.5; }
+    .bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+    .hint { font-size: 0.78rem; color: var(--muted); margin-top: 8px; line-height: 1.4; }
+
+    .map-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 10px; background: #0b1220; border-radius: 9px;
+      margin-bottom: 6px; border: 1px solid var(--border); }
+    .map-item .arrow { color: var(--accent); font-weight: 700; }
+    .map-item .meta { font-size: 0.72rem; color: var(--muted); }
+    .empty { color: var(--muted); text-align: center; padding: 28px 12px; font-size: 0.9rem; }
+
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+      display: none; align-items: flex-end; justify-content: center; z-index: 100; padding: 12px; }
+    .modal-bg.show { display: flex; }
+    @media (min-width: 500px) { .modal-bg { align-items: center; } }
+    .modal { background: var(--card); border-radius: 16px; padding: 18px; width: 100%;
+      max-width: 440px; border: 1px solid var(--border); max-height: 90vh; overflow-y: auto; }
+    .modal h3 { margin-bottom: 6px; font-size: 1.05rem; }
+    .modal .info { color: var(--muted); font-size: 0.85rem; margin-bottom: 14px; }
+    .modal label { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 4px; }
+    .modal .field { margin-bottom: 12px; }
+    .modal .field select, .modal .field input { width: 100%; }
+    .modal .actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+    .modal .actions button { flex: 1; padding: 11px; min-width: 100px; }
+
+    .diag-pre { background: #0b1220; border: 1px solid var(--border); padding: 10px;
+      border-radius: 8px; font-family: 'Courier New', monospace; font-size: 0.72rem;
+      color: #a8c7e8; max-height: 260px; overflow: auto; white-space: pre-wrap;
+      word-break: break-all; margin-top: 8px; }
+    .keg-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+    .keg-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem;
+      padding: 4px 6px; background: rgba(59,158,255,0.08); border-radius: 6px; }
+    .keg-name { color: var(--accent); font-weight: 600; }
+    .keg-status { margin-left: auto; }
+
+    .stat { font-size: 0.82rem; color: var(--muted); }
+    .stat strong { color: var(--text); }
+    .search-box { flex: 1; min-width: 140px; }
+
+    .name-list { max-height: 260px; overflow-y: auto; }
+    .name-row { padding: 7px 8px; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .name-row .locs { font-size: 0.72rem; color: var(--muted); }
+
+    .warn-box { background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.4);
+      padding: 10px; border-radius: 10px; font-size: 0.82rem; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="row" style="justify-content:space-between;margin-bottom:4px">
+    <div>
+      <h1>Absensi Sync</h1>
+      <p class="sub">Bandingkan 2 sistem absen · LP2SSC</p>
+    </div>
+    <div class="row">
+      <span id="conn" class="stat"><span class="status-dot offline"></span>—</span>
+      <button class="ghost" onclick="hardReload()" title="Refresh">↻</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-t="banding">Perbandingan</div>
+    <div class="tab" data-t="mapping">Mapping</div>
+    <div class="tab" data-t="cari">Cari Nama</div>
+  </div>
+
+  <div class="panel active" id="p-banding">
+    <div class="card">
+      <div class="week-nav">
+        <button class="ghost" onclick="shiftWeek(-1)">←</button>
+        <div class="label" id="weekLabel">—</div>
+        <button class="ghost" onclick="shiftWeek(1)">→</button>
+        <button class="ghost" onclick="goThisWeek()">Minggu ini</button>
+        <button class="warn" id="fixAllBtn" onclick="fixAllAlfa()" disabled>Perbaiki minggu ini</button>
+        <label class="stat" style="margin-left:auto;display:flex;align-items:center;gap:5px">
+          <input type="checkbox" id="onlyConflict" onchange="renderCompare()" /> Hanya bentrok
+        </label>
+      </div>
+
+      <div class="range-box">
+        <div class="range-title">🛠 Perbaiki rentang tanggal</div>
+        <div class="row" style="gap:6px">
+          <input type="date" id="rangeFrom" onchange="updateRangeCount()" />
+          <span style="color:var(--muted);font-size:0.8rem">s.d.</span>
+          <input type="date" id="rangeTo" onchange="updateRangeCount()" />
+          <button class="warn" id="fixRangeBtn" onclick="fixRangeAlfa()" disabled>Perbaiki</button>
+        </div>
+        <div class="row" style="gap:6px;margin-top:8px">
+          <button class="ghost" style="padding:5px 10px;font-size:0.78rem" onclick="setRangeToWeek()">Minggu yang tampil</button>
+          <button class="ghost" style="padding:5px 10px;font-size:0.78rem" onclick="setRangeThisMonth()">Bulan ini</button>
+          <span class="stat" id="rangeStat"></span>
+        </div>
+        <p class="hint" style="margin-top:8px">
+          <b>Aturan perbaiki bentrok:</b> 
+          1) <b style="color:var(--red)">ALFA</b> vs <b>HADIR / IZIN / SAKIT</b> → ALFA diubah jadi H/I/S. 
+          2) <b>Kosong</b> vs Terisi (H/I/S/A) → sisi Kosong diisi mengikuti status terisi.
+        </p>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot dot-H"></i> Hadir</span>
+        <span><i class="dot dot-A"></i> Alfa</span>
+        <span><i class="dot dot-I"></i> Izin</span>
+        <span><i class="dot dot-S"></i> Sakit</span>
+        <span><i class="dot dot-X"></i> Kosong</span>
+        <span><i class="dot dot-H dot-conflict"></i> Bentrok</span>
+      </div>
+
+      <div class="row" style="margin-bottom:10px">
+        <input class="search-box" id="searchCompare" placeholder="Cari nama..." oninput="renderCompare()" />
+        <span class="stat" id="compareStat"></span>
+      </div>
+
+      <div id="compareList">
+        <div class="empty">Belum ada mapping.<br>Buka tab <strong>Mapping</strong> dulu.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="p-mapping">
+    <div class="card">
+      <p class="sub" style="margin-bottom:10px">
+        Pilih 2 lokasi absen, lalu hubungkan nama yang sama.
+        Nama yang sudah di-mapping ke lokasi mana pun akan otomatis disembunyikan agar tidak ter-mapping ganda.
+      </p>
+      <div class="row">
+        <select id="locA" onchange="onLocChange(true)" style="flex:1;min-width:140px">
+          <option value="">Lokasi A</option>
+        </select>
+        <span style="color:var(--accent);font-weight:700">↔</span>
+        <select id="locB" onchange="onLocChange(true)" style="flex:1;min-width:140px">
+          <option value="">Lokasi B</option>
+        </select>
+      </div>
+      <label class="stat" style="display:flex;align-items:center;gap:6px;margin-top:10px">
+        <input type="checkbox" id="showMapped" onchange="onLocChange(false)" />
+        Tampilkan nama yang sudah di-mapping
+      </label>
+      <div class="bulk-grid" id="bulkGrid" style="display:none">
+        <div class="bulk-col"><h3 id="titleA">A</h3><div id="listA"></div></div>
+        <div class="bulk-col"><h3 id="titleB">B</h3><div id="listB"></div></div>
+      </div>
+      <div class="bulk-actions" id="bulkAct" style="display:none">
+        <button class="success" onclick="linkExact()">Link nama sama persis</button>
+        <button onclick="linkChecked()">Link yang dicentang</button>
+        <button class="ghost" onclick="clearChecks()">Reset centang</button>
+        <span class="stat" id="checkStat"></span>
+      </div>
+      <p class="hint" id="bulkHint" style="display:none">
+        • <b>Link nama sama persis</b> = otomatis pasangkan nama yang tulisannya sama.<br>
+        • <b>Link yang dicentang</b> = centang kiri &amp; kanan (jumlah harus sama). Sistem mencocokkan berdasarkan <b>kemiripan nama</b>.
+      </p>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <strong>Mapping tersimpan</strong>
+        <span class="stat" id="mapCount">0</span>
+      </div>
+      <div id="mapList"><div class="empty">Belum ada</div></div>
+    </div>
+  </div>
+
+  <div class="panel" id="p-cari">
+    <div class="card">
+      <p class="sub" style="margin-bottom:10px">Nama yang muncul di lebih dari 1 tempat (bantuan saja).</p>
+      <input class="search-box" id="searchDup" placeholder="Cari nama..." oninput="renderDup()" style="width:100%;margin-bottom:10px" />
+      <div class="stat" id="dupStat" style="margin-bottom:8px"></div>
+      <div class="name-list" id="dupList"></div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="dayModal">
+    <div class="modal">
+      <h3 id="dmTitle">Detail</h3>
+      <p class="info" id="dmInfo"></p>
+      <div id="dmBody"></div>
+      <div class="actions" style="margin-top:14px">
+        <button class="ghost" onclick="toggleDiagnostic()" id="dmDiagBtn" style="flex:1">🔍 Data Mentah</button>
+        <button class="ghost" onclick="closeDayModal()" style="flex:1">Tutup</button>
+      </div>
+      <div id="dmDiagnostic" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="editModal">
+    <div class="modal">
+      <h3 id="emTitle">Edit Status</h3>
+      <p class="info" id="emInfo"></p>
+      <div class="field">
+        <label>Status</label>
+        <select id="emStatus">
+          <option value="HADIR">HADIR</option>
+          <option value="ALFA">ALFA</option>
+          <option value="IZIN">IZIN</option>
+          <option value="SAKIT">SAKIT</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Alasan</label>
+        <input id="emReason" placeholder="Opsional" />
+      </div>
+      <div class="actions">
+        <button class="ghost" onclick="closeEdit()">Batal</button>
+        <button class="success" onclick="saveEdit()">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const CFG = {
+      apiKey: "AIzaSyA7B7y6hV8JgrnER3h-8ZpbdTZGYdlUmGQ",
+      authDomain: "absensi-staf-lp2ssc.firebaseapp.com",
+      databaseURL: "https://absensi-staf-lp2ssc-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "absensi-staf-lp2ssc",
+      storageBucket: "absensi-staf-lp2ssc.firebasestorage.app",
+      messagingSenderId: "818550489111",
+      appId: "1:818550489111:web:0fc85d9056686791d01c52"
+    };
+    firebase.initializeApp(CFG);
+    const db = firebase.database();
+    const MAP_PATH = 'absensi_sync_admin/mappings';
+
+    let locations = {};
+    let mappings = [];
+    let weekStart = startOfWeek(new Date());
+    let preserved = { A: new Set(), B: new Set() };
+    let editTarget = null;
+    let diagTarget = null;
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function escAttr(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function toISO(d) { return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+    function startOfWeek(d) {
+      const x = new Date(d); const day = x.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      x.setDate(x.getDate() + diff); x.setHours(0,0,0,0); return x;
+    }
+    function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+    function weekDates() { return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)); }
+    function formatWeekLabel() {
+      const a = weekStart; const b = addDays(weekStart, 6);
+      const bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+      return a.getDate() + ' ' + bulan[a.getMonth()] + ' – ' + b.getDate() + ' ' + bulan[b.getMonth()] + ' ' + b.getFullYear();
+    }
+    function hariSingkat(d) { return ['Min','Sen','Sel','Rab','Kam','Jum','Sab'][d.getDay()]; }
+    function statusCode(st) {
+      if (!st || !st.status) return 'X';
+      const s = st.status.toUpperCase();
+      if (s === 'HADIR') return 'H';
+      if (s === 'ALFA') return 'A';
+      if (s === 'IZIN') return 'I';
+      if (s === 'SAKIT') return 'S';
+      return 'X';
+    }
+    function statusLabel(code) { return { H: 'HADIR', A: 'ALFA', I: 'IZIN', S: 'SAKIT', X: '—' }[code] || '—'; }
+    function norm(s) { return (s || '').trim().toUpperCase().replace(/\s+/g, ' '); }
+
+    document.querySelectorAll('.tab').forEach(t => {
+      t.onclick = () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        document.getElementById('p-' + t.dataset.t).classList.add('active');
+        if (t.dataset.t === 'mapping') { fillLocSelects(); renderMapList(); }
+        if (t.dataset.t === 'banding') renderCompare();
+        if (t.dataset.t === 'cari') renderDup();
+      };
+    });
+
+    function hardReload() { locations = {}; loadJepang(); loadTemplate(); loadMaps(); }
+
+    function setConn(ok) {
+      document.getElementById('conn').innerHTML = ok
+        ? '<span class="status-dot online"></span>Online'
+        : '<span class="status-dot offline"></span>Offline';
+    }
+
+    function loadJepang() {
+      db.ref('jepang_absensi').on('value', snap => {
+        const data = snap.val() || {};
+        Object.keys(data).forEach(k => {
+          if (k === 'meta') return;
+          const b = data[k];
+          locations['jepang/' + k] = {
+            type: 'jepang', label: 'Jepang · ' + k, short: k, path: 'jepang_absensi/' + k,
+            students: b.students || [], attendance: b.attendance || {}
+          };
+        });
+        onData();
+      }, () => setConn(false));
+    }
+
+    function loadTemplate() {
+      db.ref('TEMPLATE ABSEN/rooms').on('value', snap => {
+        const rooms = snap.val() || {};
+        Object.keys(rooms).forEach(room => {
+          const r = rooms[room];
+          Object.keys(r).forEach(bk => {
+            if (bk === 'info' || bk === 'meta') return;
+            const b = r[bk];
+            if (!b || typeof b !== 'object') return;
+            locations['template/' + room + '/' + bk] = {
+              type: 'template', label: 'Template · ' + room + ' · ' + bk, short: room + '/' + bk,
+              path: 'TEMPLATE ABSEN/rooms/' + room + '/' + bk,
+              students: b.students || [], attendance: b.attendance || {}
+            };
+          });
+        });
+        onData();
+      }, () => setConn(false));
+    }
+
+    function onData() { setConn(true); renderCompare(); renderDup(); updateLocOptionsQuiet(); }
+
+    function loadMaps() {
+      db.ref(MAP_PATH).on('value', snap => {
+        const v = snap.val() || {};
+        mappings = Object.entries(v).map(([id, m]) => ({ id, ...m }));
+        renderMapList(); renderCompare(); refreshAlready(); updateRangeCount();
+      });
+    }
+
+    // ============ getStatus ============
+    function findEntry(container, name) {
+      if (!container || !name) return null;
+      if (Object.prototype.hasOwnProperty.call(container, name)) {
+        return { key: name, value: container[name] };
+      }
+      const n = norm(name);
+      for (const k of Object.keys(container)) {
+        if (norm(k) === n) return { key: k, value: container[k] };
+      }
+      return null;
+    }
+
+    function getStatus(locKey, name, dateStr) {
+      const loc = locations[locKey];
+      if (!loc || !loc.attendance[dateStr]) return null;
+      const day = loc.attendance[dateStr];
+      const fields = Object.keys(day);
+      for (const field of fields) {
+        const container = day[field];
+        if (!container || typeof container !== 'object') continue;
+        const entry = findEntry(container, name);
+        if (entry) {
+          return { kegiatan: field, nameKey: entry.key, ...entry.value };
+        }
+      }
+      return null;
+    }
+
+    function getAllKegiatanStatus(locKey, name, dateStr) {
+      const loc = locations[locKey];
+      if (!loc || !loc.attendance[dateStr]) return [];
+      const day = loc.attendance[dateStr];
+      const out = [];
+      for (const field of Object.keys(day)) {
+        const container = day[field];
+        if (!container || typeof container !== 'object') continue;
+        const entry = findEntry(container, name);
+        if (entry) {
+          out.push({ kegiatan: field, nameKey: entry.key, status: entry.value.status, reason: entry.value.reason });
+        }
+      }
+      return out;
+    }
+    // ============ END getStatus ============
+
+    function shiftWeek(n) { weekStart = addDays(weekStart, n * 7); renderCompare(); }
+    function goThisWeek() { weekStart = startOfWeek(new Date()); renderCompare(); }
+
+    // ====== PERBAIKI BENTROK (ALFA KALAH & KOSONG DIISI) ======
+    function getFixableConflict(sa, sb, ca, cb) {
+      // 1) ALFA kalah oleh H/I/S
+      if (ca === 'A' && (cb === 'H' || cb === 'I' || cb === 'S')) {
+        return { fixSide: 'A', newStatus: String(sb.status || '').toUpperCase(), newReason: sb.reason || '' };
+      }
+      if (cb === 'A' && (ca === 'H' || ca === 'I' || ca === 'S')) {
+        return { fixSide: 'B', newStatus: String(sa.status || '').toUpperCase(), newReason: sa.reason || '' };
+      }
+      // 2) Kosong diisi oleh status yang terisi
+      if (ca === 'X' && cb !== 'X') {
+        return { fixSide: 'A', newStatus: String(sb.status || '').toUpperCase(), newReason: sb.reason || '' };
+      }
+      if (cb === 'X' && ca !== 'X') {
+        return { fixSide: 'B', newStatus: String(sa.status || '').toUpperCase(), newReason: sa.reason || '' };
+      }
+      return null;
+    }
+
+    function statusPath(locKey, name, dateStr, kegiatan) {
+      const loc = locations[locKey];
+      if (!loc) return null;
+      if (kegiatan) return loc.path + '/attendance/' + dateStr + '/' + kegiatan + '/' + name;
+      if (loc.type === 'jepang') return loc.path + '/attendance/' + dateStr + '/Shalat_Subuh/' + name;
+      return loc.path + '/attendance/' + dateStr + '/Keterangan/' + name;
+    }
+
+    function collectFixes(dates) {
+      const fixes = [];
+      mappings.forEach(function (m) {
+        dates.forEach(function (ds) {
+          const sa = getStatus(m.locA, m.nameA, ds);
+          const sb = getStatus(m.locB, m.nameB, ds);
+          const fix = getFixableConflict(sa, sb, statusCode(sa), statusCode(sb));
+          if (!fix) return;
+          let loc, name, cur, kegiatan, writeName;
+          if (fix.fixSide === 'A') {
+            loc = locations[m.locA]; name = m.nameA; cur = sa; kegiatan = sa && sa.kegiatan;
+            writeName = (sa && sa.nameKey) || m.nameA;
+          } else {
+            loc = locations[m.locB]; name = m.nameB; cur = sb; kegiatan = sb && sb.kegiatan;
+            writeName = (sb && sb.nameKey) || m.nameB;
+          }
+          if (!loc) return;
+          const path = statusPath(fix.fixSide === 'A' ? m.locA : m.locB, writeName, ds, kegiatan);
+          fixes.push({
+            mapId: m.id, nameA: m.nameA, nameB: m.nameB, date: ds, side: fix.fixSide,
+            locLabel: loc.short, name: name, kegiatan: kegiatan || '—',
+            oldStatus: cur ? cur.status : '(kosong)',
+            newStatus: fix.newStatus, newReason: fix.newReason, path: path
+          });
+        });
+      });
+      return fixes;
+    }
+
+    function formatFixPreview(fixes, limit) {
+      limit = limit || 6;
+      return fixes.slice(0, limit).map(function (f) {
+        return '• ' + f.date + ' · ' + f.name + ' (' + f.locLabel + '): ' +
+               (f.oldStatus || '—') + ' → ' + f.newStatus;
+      }).join('\n') + (fixes.length > limit ? '\n... dan ' + (fixes.length - limit) + ' lainnya' : '');
+    }
+
+    function runFixes(fixes) {
+      if (!fixes.length) return Promise.resolve(0);
+      const jobs = fixes.map(function (f) { return db.ref(f.path).set({ status: f.newStatus, reason: f.newReason }); });
+      return Promise.all(jobs).then(function () { return fixes.length; });
+    }
+
+    function fixPersonAlfa(mapId) {
+      const m = mappings.find(function (x) { return x.id === mapId; });
+      if (!m) return;
+      const dates = weekDates().map(toISO);
+      const allFixes = collectFixes(dates).filter(function (f) { return f.mapId === mapId; });
+      if (!allFixes.length) { alert('Tidak ada bentrok untuk nama ini minggu ini.'); return; }
+      const msg = 'Akan mengubah ' + allFixes.length + ' entri:\n\n' +
+        formatFixPreview(allFixes, 8) +
+        '\n\nLanjutkan?';
+      if (!confirm(msg)) return;
+      runFixes(allFixes).then(function (n) { alert('Berhasil memperbaiki ' + n + ' entri.'); })
+        .catch(function (e) { alert('Gagal: ' + e.message); });
+    }
+
+    function fixAllAlfa() {
+      const dates = weekDates().map(toISO);
+      const fixes = collectFixes(dates);
+      if (!fixes.length) { alert('Tidak ada bentrok minggu ini.'); return; }
+      const msg = 'Perbaiki ' + fixes.length + ' entri minggu ini:\n\n' +
+        formatFixPreview(fixes, 8) +
+        '\n\nLanjutkan?';
+      if (!confirm(msg)) return;
+      runFixes(fixes).then(function (n) { alert('Berhasil memperbaiki ' + n + ' entri.'); })
+        .catch(function (e) { alert('Sebagian gagal: ' + e.message); });
+    }
+
+    function fixRangeAlfa() {
+      const dates = getRangeDates();
+      if (!dates) { alert('Pilih rentang tanggal yang valid.'); return; }
+      const fixes = collectFixes(dates);
+      if (!fixes.length) { alert('Tidak ada bentrok di rentang ini.'); return; }
+      const msg = 'Perbaiki ' + fixes.length + ' entri\nDari ' + dates[0] + ' sampai ' + dates[dates.length - 1] + '\n\n' +
+        formatFixPreview(fixes, 8) +
+        '\n\nLanjutkan?';
+      if (!confirm(msg)) return;
+      if (fixes.length > 200 && !confirm('Akan memperbaiki ' + fixes.length + ' entri. Lanjutkan?')) return;
+      runFixes(fixes).then(function (n) { alert('Berhasil memperbaiki ' + n + ' entri.'); })
+        .catch(function (e) { alert('Sebagian gagal: ' + e.message); });
+    }
+
+    function fixDayAlfa(mapId, dateStr) {
+      const m = mappings.find(function (x) { return x.id === mapId; });
+      if (!m) return;
+      const sa = getStatus(m.locA, m.nameA, dateStr);
+      const sb = getStatus(m.locB, m.nameB, dateStr);
+      const fix = getFixableConflict(sa, sb, statusCode(sa), statusCode(sb));
+      if (!fix) { alert('Tidak ada bentrok yang bisa diperbaiki di tanggal ini.'); return; }
+      if (!confirm('Samakan status menjadi ' + fix.newStatus + '?')) return;
+      const fixes = collectFixes([dateStr]).filter(function (f) { return f.mapId === mapId; });
+      runFixes(fixes).then(function () { closeDayModal(); })
+        .catch(function (e) { alert('Gagal: ' + e.message); });
+    }
+
+    function getRangeDates() {
+      const fromStr = document.getElementById('rangeFrom').value;
+      const toStr = document.getElementById('rangeTo').value;
+      if (!fromStr || !toStr) return null;
+      const from = new Date(fromStr + 'T00:00:00');
+      const to = new Date(toStr + 'T00:00:00');
+      if (isNaN(from.getTime()) || isNaN(to.getTime()) || from > to) return null;
+      const dates = []; let cur = new Date(from); let guard = 0;
+      while (cur <= to && guard < 366) { dates.push(toISO(cur)); cur = addDays(cur, 1); guard++; }
+      return dates;
+    }
+
+    function updateRangeCount() {
+      const btn = document.getElementById('fixRangeBtn');
+      const stat = document.getElementById('rangeStat');
+      if (!btn) return;
+      const dates = getRangeDates();
+      if (!dates) { btn.disabled = true; btn.textContent = 'Perbaiki'; if (stat) stat.textContent = 'Rentang tidak valid'; return; }
+      const fixes = collectFixes(dates);
+      if (!fixes.length) { btn.disabled = true; btn.textContent = 'Tidak ada bentrok'; if (stat) stat.textContent = dates.length + ' hari · 0 bentrok'; }
+      else { btn.disabled = false; btn.textContent = 'Perbaiki ' + fixes.length + ' bentrok'; if (stat) stat.textContent = dates.length + ' hari · ' + fixes.length + ' bentrok'; }
+    }
+
+    function setRangeToWeek() {
+      document.getElementById('rangeFrom').value = toISO(weekStart);
+      document.getElementById('rangeTo').value = toISO(addDays(weekStart, 6));
+      updateRangeCount();
+    }
+    function setRangeThisMonth() {
+      const now = new Date();
+      document.getElementById('rangeFrom').value = toISO(new Date(now.getFullYear(), now.getMonth(), 1));
+      document.getElementById('rangeTo').value = toISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+      updateRangeCount();
+    }
+
+    function renderCompare() {
+      document.getElementById('weekLabel').textContent = formatWeekLabel();
+      const list = document.getElementById('compareList');
+      const q = (document.getElementById('searchCompare').value || '').toLowerCase().trim();
+      const onlyC = document.getElementById('onlyConflict').checked;
+      const dates = weekDates();
+      const dateStrs = dates.map(toISO);
+
+      if (!mappings.length) {
+        list.innerHTML = '<div class="empty">Belum ada mapping.<br>Buka tab <strong>Mapping</strong> dulu.</div>';
+        document.getElementById('compareStat').textContent = '';
+        const b = document.getElementById('fixAllBtn');
+        if (b) { b.disabled = true; b.textContent = 'Perbaiki minggu ini'; }
+        return;
+      }
+
+      let items = [...mappings];
+      if (q) items = items.filter(m =>
+        (m.nameA || '').toLowerCase().includes(q) || (m.nameB || '').toLowerCase().includes(q));
+
+      const enriched = items.map(m => {
+        let conflicts = 0, fixables = 0;
+        const days = dateStrs.map(ds => {
+          const sa = getStatus(m.locA, m.nameA, ds);
+          const sb = getStatus(m.locB, m.nameB, ds);
+          const ca = statusCode(sa), cb = statusCode(sb);
+          const conflict = (ca !== 'X' || cb !== 'X') && ca !== cb;
+          const fixable = !!getFixableConflict(sa, sb, ca, cb);
+          if (conflict) conflicts++;
+          if (fixable) fixables++;
+          return { ds, sa, sb, ca, cb, conflict, fixable };
+        });
+        return { m, days, conflicts, fixables };
+      });
+
+      let shown = enriched;
+      if (onlyC) shown = enriched.filter(e => e.conflicts > 0);
+      shown.sort((a, b) => b.conflicts - a.conflicts || (a.m.nameA || '').localeCompare(b.m.nameA || ''));
+
+      const totalConflictPeople = enriched.filter(e => e.conflicts > 0).length;
+      document.getElementById('compareStat').innerHTML =
+        '<strong>' + shown.length + '</strong> orang' +
+        (totalConflictPeople ? ' · <strong style="color:var(--red)">' + totalConflictPeople + ' bentrok</strong>' : '');
+
+      const totalFixable = collectFixes(dateStrs).length;
+      const fixAllBtn = document.getElementById('fixAllBtn');
+      if (fixAllBtn) {
+        fixAllBtn.disabled = totalFixable === 0;
+        fixAllBtn.textContent = totalFixable > 0 ? 'Perbaiki minggu ini (' + totalFixable + ')' : 'Perbaiki minggu ini';
+      }
+
+      if (!shown.length) {
+        list.innerHTML = '<div class="empty">' + (onlyC ? 'Tidak ada bentrok minggu ini' : 'Tidak ada data') + '</div>';
+        return;
+      }
+
+      list.innerHTML = shown.map(function(item) {
+        var m = item.m, days = item.days, conflicts = item.conflicts, fixables = item.fixables || 0;
+        var la = (locations[m.locA] && locations[m.locA].short) || m.locA;
+        var lb = (locations[m.locB] && locations[m.locB].short) || m.locB;
+        var dayCols = days.map(function(d, i) {
+          var dateObj = dates[i];
+          var confClass = d.conflict ? 'conflict-day' : '';
+          var confDot = d.conflict ? 'dot-conflict' : '';
+          var statusTxt = d.ca === d.cb ? statusLabel(d.ca) : (d.ca + '/' + d.cb);
+          return '<div class="day-col ' + confClass + '" onclick="openDay(\'' + m.id + '\',\'' + d.ds + '\')">' +
+            '<div class="day-label">' + hariSingkat(dateObj) + ' ' + dateObj.getDate() + '</div>' +
+            '<div class="day-dots">' +
+              '<i class="dot dot-' + d.ca + ' ' + (d.conflict ? confDot : '') + '"></i>' +
+              '<i class="dot dot-' + d.cb + ' ' + (d.conflict ? confDot : '') + '"></i>' +
+            '</div>' +
+            '<div class="day-status-text">' + statusTxt + '</div>' +
+          '</div>';
+        }).join('');
+
+        return '<div class="person-card ' + (conflicts ? 'has-conflict' : '') + '">' +
+          '<div class="person-head">' +
+            '<div class="person-names">' +
+              esc(m.nameA) + ' <span style="color:var(--muted);font-weight:400">↔</span> ' + esc(m.nameB) +
+              '<small>' + esc(la) + ' · ' + esc(lb) + '</small>' +
+            '</div>' +
+            '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+              (conflicts ? '<span class="conflict-tag">' + conflicts + ' bentrok</span>' : '') +
+              (fixables > 0
+                ? '<button class="warn" style="padding:5px 10px;font-size:0.72rem" ' +
+                  'onclick="event.stopPropagation();fixPersonAlfa(\'' + m.id + '\')">Perbaiki ' + fixables + ' bentrok</button>'
+                : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="days">' + dayCols + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function openDay(mapId, dateStr) {
+      var m = mappings.find(function(x) { return x.id === mapId; });
+      if (!m) return;
+      diagTarget = { mapId: mapId, dateStr: dateStr, m: m };
+      var sa = getStatus(m.locA, m.nameA, dateStr);
+      var sb = getStatus(m.locB, m.nameB, dateStr);
+      var ca = statusCode(sa), cb = statusCode(sb);
+      var conflict = (ca !== 'X' || cb !== 'X') && ca !== cb;
+
+      var allA = getAllKegiatanStatus(m.locA, m.nameA, dateStr);
+      var allB = getAllKegiatanStatus(m.locB, m.nameB, dateStr);
+      var warnA = allA.length > 1 ? ' <span style="color:var(--yellow)">⚠ ' + allA.length + ' field (cek Data Mentah)</span>' : '';
+      var warnB = allB.length > 1 ? ' <span style="color:var(--yellow)">⚠ ' + allB.length + ' field</span>' : '';
+
+      document.getElementById('dmTitle').textContent = dateStr;
+      document.getElementById('dmInfo').textContent =
+        ((locations[m.locA] && locations[m.locA].label) || m.locA) + '  ↔  ' +
+        ((locations[m.locB] && locations[m.locB].label) || m.locB);
+
+      var canForce = conflict && (ca === 'H' || cb === 'H');
+      var alfaFix = getFixableConflict(sa, sb, ca, cb);
+      var alfaFixBtn = alfaFix
+        ? '<button class="warn" style="width:100%;margin-top:8px;padding:10px" ' +
+          'onclick="fixDayAlfa(\'' + mapId + '\',\'' + dateStr + '\')">Perbaiki bentrok → ' + alfaFix.newStatus + '</button>'
+        : '';
+
+      document.getElementById('dmBody').innerHTML =
+        '<div style="display:flex;flex-direction:column;gap:10px">' +
+          '<div style="background:#0b1220;padding:12px;border-radius:10px;border:1px solid var(--border)">' +
+            '<div style="font-weight:600;margin-bottom:4px">' + esc(m.nameA) + '</div>' +
+            '<div class="stat" style="margin-bottom:8px">' + esc((locations[m.locA] && locations[m.locA].short) || '') + warnA + '</div>' +
+            '<div class="row">' +
+              '<i class="dot dot-' + ca + '" style="width:18px;height:18px"></i>' +
+              '<strong>' + statusLabel(ca) + '</strong>' +
+              (sa && sa.reason ? '<span class="stat">(' + esc(sa.reason) + ')</span>' : '') +
+              (sa && sa.kegiatan ? '<span class="stat">· ' + esc(sa.kegiatan) + '</span>' : '') +
+              '<button class="ghost" style="margin-left:auto;padding:5px 10px;font-size:0.8rem" ' +
+                'onclick="openEdit(\'' + escAttr(m.locA) + '\',\'' + escAttr(m.nameA) + '\',\'' + dateStr + '\',\'' +
+                escAttr((sa && sa.status) || '') + '\',\'' + escAttr((sa && sa.reason) || '') + '\',\'' +
+                escAttr((sa && sa.kegiatan) || '') + '\',\'' + escAttr((sa && sa.nameKey) || '') + '\')">Edit</button>' +
+            '</div>' +
+          '</div>' +
+          '<div style="background:#0b1220;padding:12px;border-radius:10px;border:1px solid var(--border)">' +
+            '<div style="font-weight:600;margin-bottom:4px">' + esc(m.nameB) + '</div>' +
+            '<div class="stat" style="margin-bottom:8px">' + esc((locations[m.locB] && locations[m.locB].short) || '') + warnB + '</div>' +
+            '<div class="row">' +
+              '<i class="dot dot-' + cb + '" style="width:18px;height:18px"></i>' +
+              '<strong>' + statusLabel(cb) + '</strong>' +
+              (sb && sb.reason ? '<span class="stat">(' + esc(sb.reason) + ')</span>' : '') +
+              (sb && sb.kegiatan ? '<span class="stat">· ' + esc(sb.kegiatan) + '</span>' : '') +
+              '<button class="ghost" style="margin-left:auto;padding:5px 10px;font-size:0.8rem" ' +
+                'onclick="openEdit(\'' + escAttr(m.locB) + '\',\'' + escAttr(m.nameB) + '\',\'' + dateStr + '\',\'' +
+                escAttr((sb && sb.status) || '') + '\',\'' + escAttr((sb && sb.reason) || '') + '\',\'' +
+                escAttr((sb && sb.kegiatan) || '') + '\',\'' + escAttr((sb && sb.nameKey) || '') + '\')">Edit</button>' +
+            '</div>' +
+          '</div>' +
+          (conflict ?
+            '<div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.4);padding:10px;border-radius:10px;font-size:0.88rem">' +
+              'Status berbeda' +
+              (alfaFix ? '<div style="margin-top:6px;font-size:0.78rem;color:var(--muted)">Akan disamakan menjadi ' + alfaFix.newStatus + '</div>' : '') +
+              alfaFixBtn +
+              (canForce ? '<button class="warn" style="width:100%;margin-top:8px;padding:10px" onclick="forceHadir(\'' + mapId + '\',\'' + dateStr + '\')">Samakan ke HADIR</button>' : '') +
+            '</div>' : '') +
+        '</div>';
+
+      document.getElementById('dmDiagnostic').style.display = 'none';
+      document.getElementById('dmDiagnostic').innerHTML = '';
+      document.getElementById('dmDiagBtn').textContent = '🔍 Data Mentah';
+      document.getElementById('dayModal').classList.add('show');
+    }
+
+    function toggleDiagnostic() {
+      if (!diagTarget) return;
+      const el = document.getElementById('dmDiagnostic');
+      const btn = document.getElementById('dmDiagBtn');
+      if (el.style.display !== 'none') { el.style.display = 'none'; el.innerHTML = ''; btn.textContent = '🔍 Data Mentah'; return; }
+
+      const m = diagTarget.m;
+      const ds = diagTarget.dateStr;
+
+      function renderSide(loc, name, locKey) {
+        if (!loc) return '<div class="stat">Lokasi tidak ditemukan</div>';
+        const kegs = getAllKegiatanStatus(locKey, name, ds);
+        let html = '<div style="font-size:0.78rem;color:var(--muted);margin-bottom:4px">' +
+          esc(loc.short) + ' · ' + esc(name) + '</div>';
+        if (!kegs.length) {
+          html += '<div class="stat" style="color:var(--red)">⚠ Tidak ada entry sama sekali untuk nama ini di tanggal tsb.</div>';
+        } else {
+          html += '<div class="keg-list">' + kegs.map(function(k) {
+            return '<div class="keg-item">' +
+              '<span class="keg-name">' + esc(k.kegiatan) + '</span>' +
+              '<span class="stat">(' + esc(k.nameKey) + ')</span>' +
+              '<span class="keg-status"><i class="dot dot-' + statusCode({status: k.status}) + '" style="width:10px;height:10px"></i> ' + esc(k.status || '—') + '</span>' +
+            '</div>';
+          }).join('') + '</div>';
+        }
+        const raw = loc.attendance[ds];
+        html += '<div class="diag-pre">' + esc(JSON.stringify(raw, null, 2)) + '</div>';
+        return html;
+      }
+
+      el.innerHTML =
+        '<div class="warn-box" style="margin-bottom:10px">' +
+          'Data mentah dari Firebase untuk tanggal <b>' + esc(ds) + '</b>.<br>' +
+          'Program mengambil status dari <b>field pertama</b> yang berisi nama ini (urutan field apa adanya dari Firebase).' +
+        '</div>' +
+        renderSide(locations[m.locA], m.nameA, m.locA) +
+        '<div style="height:10px"></div>' +
+        renderSide(locations[m.locB], m.nameB, m.locB);
+      el.style.display = 'block';
+      btn.textContent = '✖ Sembunyikan Data Mentah';
+    }
+
+    function closeDayModal() {
+      document.getElementById('dayModal').classList.remove('show');
+      diagTarget = null;
+    }
+
+    function forceHadir(mapId, dateStr) {
+      var m = mappings.find(function(x) { return x.id === mapId; });
+      if (!m) return;
+      if (!confirm('Samakan keduanya jadi HADIR di tanggal ' + dateStr + '?')) return;
+      var jobs = [];
+      function ensureHadir(locKey, name) {
+        var st = getStatus(locKey, name, dateStr);
+        if (st && st.status && st.status.toUpperCase() === 'HADIR') return;
+        var loc = locations[locKey];
+        if (!loc) return;
+        var keg = (st && st.kegiatan) || (loc.type === 'jepang' ? 'Shalat_Subuh' : 'Keterangan');
+        var writeName = (st && st.nameKey) || name;
+        var path = loc.path + '/attendance/' + dateStr + '/' + keg + '/' + writeName;
+        jobs.push(db.ref(path).set({ status: 'HADIR', reason: (st && st.reason) || '' }));
+      }
+      ensureHadir(m.locA, m.nameA); ensureHadir(m.locB, m.nameB);
+      Promise.all(jobs).then(function() { closeDayModal(); })
+        .catch(function(e) { alert('Gagal: ' + e.message); });
+    }
+
+    function openEdit(locKey, name, date, status, reason, kegiatan, nameKey) {
+      editTarget = { locKey: locKey, name: name, nameKey: nameKey, date: date, kegiatan: kegiatan };
+      document.getElementById('emTitle').textContent = name;
+      document.getElementById('emInfo').textContent = ((locations[locKey] && locations[locKey].label) || locKey) + ' · ' + date +
+        (kegiatan ? ' · ' + kegiatan : '');
+      document.getElementById('emStatus').value = status || 'HADIR';
+      document.getElementById('emReason').value = reason || '';
+      document.getElementById('editModal').classList.add('show');
+    }
+    function closeEdit() { document.getElementById('editModal').classList.remove('show'); editTarget = null; }
+    function saveEdit() {
+      if (!editTarget) return;
+      var status = document.getElementById('emStatus').value;
+      var reason = document.getElementById('emReason').value.trim();
+      var locKey = editTarget.locKey, date = editTarget.date, kegiatan = editTarget.kegiatan;
+      var writeName = editTarget.nameKey || editTarget.name;
+      var loc = locations[locKey];
+      if (!loc) return;
+      var keg = kegiatan || (loc.type === 'jepang' ? 'Shalat_Subuh' : 'Keterangan');
+      var path = loc.path + '/attendance/' + date + '/' + keg + '/' + writeName;
+      db.ref(path).set({ status: status, reason: reason })
+        .then(function() { closeEdit(); closeDayModal(); })
+        .catch(function(e) { alert('Gagal: ' + e.message); });
+    }
+
+    function updateLocOptionsQuiet() {
+      var sources = Object.entries(locations).map(function(e) { return { k: e[0], label: e[1].label }; })
+        .sort(function(a, b) { return a.label.localeCompare(b.label); });
+      ['A', 'B'].forEach(function(side) {
+        var sel = document.getElementById('loc' + side);
+        var cur = sel.value;
+        var html = '<option value="">Lokasi ' + side + '</option>' +
+          sources.map(function(s) { return '<option value="' + s.k + '">' + esc(s.label) + '</option>'; }).join('');
+        if (sel.dataset.h !== html) {
+          sel.innerHTML = html; sel.dataset.h = html;
+          if (cur && Array.prototype.some.call(sel.options, function(o) { return o.value === cur; })) sel.value = cur;
+        }
+      });
+    }
+
+    function fillLocSelects() { updateLocOptionsQuiet(); onLocChange(true); }
+
+    function onLocChange(force) {
+      var a = document.getElementById('locA').value;
+      var b = document.getElementById('locB').value;
+      var grid = document.getElementById('bulkGrid');
+      var act = document.getElementById('bulkAct');
+      var hint = document.getElementById('bulkHint');
+
+      if (!a || !b || a === b) {
+        grid.style.display = 'none'; act.style.display = 'none'; hint.style.display = 'none';
+        preserved = { A: new Set(), B: new Set() }; return;
+      }
+
+      if (!force) {
+        preserved.A = new Set(Array.prototype.map.call(document.querySelectorAll('#listA input:checked:not(:disabled)'), function(c) { return c.value; }));
+        preserved.B = new Set(Array.prototype.map.call(document.querySelectorAll('#listB input:checked:not(:disabled)'), function(c) { return c.value; }));
+      } else { preserved = { A: new Set(), B: new Set() }; }
+
+      grid.style.display = 'grid'; act.style.display = 'flex'; hint.style.display = 'block';
+
+      var namesA = ((locations[a] && locations[a].students) || []).slice().sort(function(x, y) { return x.localeCompare(y); });
+      var namesB = ((locations[b] && locations[b].students) || []).slice().sort(function(x, y) { return x.localeCompare(y); });
+      var availA = namesA.filter(function(n) { return !isMapped(a, n, b, 'A'); });
+      var availB = namesB.filter(function(n) { return !isMapped(a, n, b, 'B'); });
+      var hiddenA = namesA.length - availA.length;
+      var hiddenB = namesB.length - availB.length;
+
+      document.getElementById('titleA').textContent =
+        ((locations[a] && locations[a].label) || a) + (hiddenA ? ' · tampil ' + availA.length + ' dari ' + namesA.length : '');
+      document.getElementById('titleB').textContent =
+        ((locations[b] && locations[b].label) || b) + (hiddenB ? ' · tampil ' + availB.length + ' dari ' + namesB.length : '');
+
+      function renderList(names, preservedSet, locKey, otherLoc, otherSide) {
+        return names.map(function(n) {
+          var chk = preservedSet.has(n);
+          var used = mappedInfo(locKey, n);
+          var badge = used.length ? ' <span class="stat" style="font-size:0.7rem">(sudah di-map ke ' + used.map(esc).join(', ') + ')</span>' : '';
+          return '<label class="check-item' + (used.length ? ' already' : '') + '">' +
+            '<input type="checkbox" value="' + escAttr(n) + '" ' + (chk ? 'checked' : '') + ' onchange="updCheckStat()" />' +
+            '<span>' + esc(n) + badge + '</span></label>';
+        }).join('') || '<div class="empty">Semua nama sudah di-mapping ✓<br><span style="font-size:0.75rem">Centang "Tampilkan nama yang sudah di-mapping" di atas, atau hapus mapping lama di bawah.</span></div>';
+      }
+
+      document.getElementById('listA').innerHTML = renderList(availA, preserved.A, a, b, 'A');
+      document.getElementById('listB').innerHTML = renderList(availB, preserved.B, b, a, 'B');
+      updCheckStat();
+    }
+
+    function mappedInfo(locKey, name) {
+      var n = norm(name);
+      return mappings.filter(function(m) {
+        return (m.locA === locKey && norm(m.nameA) === n) || (m.locB === locKey && norm(m.nameB) === n);
+      }).map(function(m) {
+        var otherLoc = m.locA === locKey ? m.locB : m.locA;
+        var otherName = m.locA === locKey ? m.nameB : m.nameA;
+        return ((locations[otherLoc] && locations[otherLoc].short) || otherLoc) + '/' + otherName;
+      });
+    }
+
+    function isMapped(locA, name, locB, side) {
+      var n = norm(name);
+      var showMappedEl = document.getElementById('showMapped');
+      var showMapped = showMappedEl && showMappedEl.checked;
+      if (showMapped) {
+        return mappings.some(function(m) {
+          if (side === 'A') return (m.locA === locA && norm(m.nameA) === n && m.locB === locB) || (m.locB === locA && norm(m.nameB) === n && m.locA === locB);
+          return (m.locA === locB && norm(m.nameA) === n && m.locB === locA) || (m.locB === locB && norm(m.nameB) === n && m.locA === locA);
+        });
+      }
+      var mappedLoc = side === 'A' ? locA : locB;
+      return mappings.some(function(m) {
+        return (m.locA === mappedLoc && norm(m.nameA) === n) || (m.locB === mappedLoc && norm(m.nameB) === n);
+      });
+    }
+
+    function pairExists(locA, nameA, locB, nameB) {
+      var nA = norm(nameA), nB = norm(nameB);
+      return mappings.some(function(m) {
+        return (m.locA === locA && norm(m.nameA) === nA && m.locB === locB && norm(m.nameB) === nB) ||
+               (m.locA === locB && norm(m.nameA) === nB && m.locB === locA && norm(m.nameB) === nA);
+      });
+    }
+
+    function updCheckStat() {
+      var ca = document.querySelectorAll('#listA input:checked').length;
+      var cb = document.querySelectorAll('#listB input:checked').length;
+      document.getElementById('checkStat').textContent = 'Centang: ' + ca + ' / ' + cb;
+    }
+    function clearChecks() {
+      document.querySelectorAll('#listA input:checked, #listB input:checked').forEach(function(c) { c.checked = false; });
+      preserved = { A: new Set(), B: new Set() }; updCheckStat();
+    }
+    function refreshAlready() {
+      var a = document.getElementById('locA').value;
+      var b = document.getElementById('locB').value;
+      if (!a || !b || a === b) return;
+      onLocChange(false);
+    }
+
+    function nameScore(a, b) {
+      var A = norm(a), B = norm(b);
+      if (!A || !B) return 0;
+      if (A === B) return 1;
+      if (A.indexOf(B) !== -1 || B.indexOf(A) !== -1) return 0.85 + 0.15 * (Math.min(A.length, B.length) / Math.max(A.length, B.length));
+      var ta = A.split(' ').filter(Boolean), tb = B.split(' ').filter(Boolean);
+      var inter = 0, used = {};
+      ta.forEach(function(t) {
+        for (var i = 0; i < tb.length; i++) {
+          if (used[i]) continue;
+          if (t === tb[i] || t.indexOf(tb[i]) !== -1 || tb[i].indexOf(t) !== -1) { inter++; used[i] = true; break; }
+        }
+      });
+      var tokenScore = inter / Math.max(ta.length, tb.length);
+      var dist = levenshtein(A, B);
+      var editScore = 1 - (dist / Math.max(A.length, B.length));
+      return Math.max(tokenScore * 0.7 + editScore * 0.3, tokenScore, editScore * 0.9);
+    }
+
+    function levenshtein(a, b) {
+      var m = a.length, n = b.length;
+      if (m === 0) return n; if (n === 0) return m;
+      if (m > 40 || n > 40) return Math.max(m, n);
+      var prev = new Array(n + 1), cur = new Array(n + 1);
+      for (var j = 0; j <= n; j++) prev[j] = j;
+      for (var i = 1; i <= m; i++) {
+        cur[0] = i;
+        for (var j = 1; j <= n; j++) {
+          var cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+        }
+        var tmp = prev; prev = cur; cur = tmp;
+      }
+      return prev[n];
+    }
+
+    function pairBySimilarity(listA, listB) {
+      var remaining = listB.slice(), pairs = [];
+      var scoredA = listA.map(function(nA) {
+        var best = -1, bestScore = -1;
+        remaining.forEach(function(nB, idx) { var s = nameScore(nA, nB); if (s > bestScore) { bestScore = s; best = idx; } });
+        return { nA: nA, score: bestScore };
+      });
+      scoredA.sort(function(x, y) { return y.score - x.score; });
+      var usedB = {};
+      scoredA.forEach(function(item) {
+        var bestIdx = -1, bestScore = -1;
+        remaining.forEach(function(nB, idx) {
+          if (usedB[nB]) return;
+          var s = nameScore(item.nA, nB); if (s > bestScore) { bestScore = s; bestIdx = idx; }
+        });
+        if (bestIdx >= 0) { var nB = remaining[bestIdx]; usedB[nB] = true; pairs.push({ nameA: item.nA, nameB: nB, score: bestScore }); }
+      });
+      return pairs;
+    }
+
+    function saveMapEntry(m) {
+      var id = db.ref(MAP_PATH).push().key;
+      var obj = { locA: m.locA, nameA: m.nameA, locB: m.locB, nameB: m.nameB, createdAt: Date.now() };
+      return db.ref(MAP_PATH + '/' + id).set(obj).then(function() { return { id: id, ...obj }; });
+    }
+    function applyOptimistic(saved) {
+      saved.forEach(function(s) { if (!mappings.some(function(m) { return m.id === s.id; })) mappings.push(s); });
+    }
+
+    function linkExact() {
+      var locA = document.getElementById('locA').value, locB = document.getElementById('locB').value;
+      if (!locA || !locB) return;
+      var namesA = (locations[locA] && locations[locA].students) || [];
+      var mapB = {};
+      ((locations[locB] && locations[locB].students) || []).forEach(function(n) { mapB[norm(n)] = n; });
+      var toAdd = [];
+      namesA.forEach(function(nA) {
+        if (isMapped(locA, nA, locB, 'A')) return;
+        var nB = mapB[norm(nA)];
+        if (nB && !isMapped(locB, nB, locA, 'B') && !pairExists(locA, nA, locB, nB))
+          toAdd.push({ locA: locA, nameA: nA, locB: locB, nameB: nB });
+      });
+      if (!toAdd.length) { alert('Tidak ada nama sama yang belum di-map.'); return; }
+      if (!confirm('Link ' + toAdd.length + ' nama yang sama persis?')) return;
+      Promise.all(toAdd.map(saveMapEntry)).then(function(saved) {
+        applyOptimistic(saved); onLocChange(true); alert('Berhasil: ' + saved.length + ' mapping');
+      }).catch(function(e) { alert('Gagal: ' + e.message); });
+    }
+
+    function linkChecked() {
+      var locA = document.getElementById('locA').value, locB = document.getElementById('locB').value;
+      var checkedA = Array.prototype.map.call(document.querySelectorAll('#listA input:checked'), function(c) { return c.value; });
+      var checkedB = Array.prototype.map.call(document.querySelectorAll('#listB input:checked'), function(c) { return c.value; });
+      if (!checkedA.length || !checkedB.length) { alert('Centang nama di kedua sisi.'); return; }
+      if (checkedA.length !== checkedB.length) { alert('Jumlah centang harus sama.\nKiri: ' + checkedA.length + ' · Kanan: ' + checkedB.length); return; }
+      var pairs = pairBySimilarity(checkedA, checkedB);
+      var toAdd = [], lines = [];
+      pairs.forEach(function(p) {
+        if (pairExists(locA, p.nameA, locB, p.nameB)) return;
+        toAdd.push({ locA: locA, nameA: p.nameA, locB: locB, nameB: p.nameB });
+        var pct = Math.round(p.score * 100);
+        var flag = p.score < 0.45 ? ' ⚠ mirip lemah' : (p.score < 0.7 ? ' · cukup' : ' · cocok');
+        lines.push(p.nameA + '  ↔  ' + p.nameB + '  (' + pct + '%' + flag + ')');
+      });
+      if (!toAdd.length) { alert('Semua pasangan sudah di-map.'); return; }
+      if (!confirm('Preview:\n\n' + lines.join('\n') + '\n\nSimpan ' + toAdd.length + ' mapping?')) return;
+      Promise.all(toAdd.map(saveMapEntry)).then(function(saved) {
+        applyOptimistic(saved); onLocChange(true); alert('Berhasil: ' + saved.length + ' mapping');
+      }).catch(function(e) { alert('Gagal: ' + e.message); });
+    }
+
+    function removeMap(id) {
+      if (!confirm('Hapus mapping ini?')) return;
+      db.ref(MAP_PATH + '/' + id).remove().then(function() {
+        mappings = mappings.filter(function(m) { return m.id !== id; });
+        renderMapList(); renderCompare(); refreshAlready(); updateRangeCount();
+      }).catch(function(e) { alert('Gagal: ' + e.message); });
+    }
+
+    function renderMapList() {
+      document.getElementById('mapCount').textContent = mappings.length + ' mapping';
+      var el = document.getElementById('mapList');
+      if (!mappings.length) { el.innerHTML = '<div class="empty">Belum ada mapping</div>'; return; }
+      var sorted = mappings.slice().sort(function(a, b) { return (a.nameA || '').localeCompare(b.nameA || ''); });
+      el.innerHTML = sorted.map(function(m) {
+        return '<div class="map-item">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div><strong>' + esc(m.nameA) + '</strong> <span class="arrow">↔</span> <strong>' + esc(m.nameB) + '</strong></div>' +
+            '<div class="meta">' + esc((locations[m.locA] && locations[m.locA].short) || m.locA) + ' · ' + esc((locations[m.locB] && locations[m.locB].short) || m.locB) + '</div>' +
+          '</div>' +
+          '<button class="danger" style="padding:5px 10px;font-size:0.78rem" onclick="removeMap(\'' + m.id + '\')">Hapus</button>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderDup() {
+      var q = (document.getElementById('searchDup').value || '').toLowerCase().trim();
+      var allNames = {};
+      Object.entries(locations).forEach(function(e) {
+        var lk = e[0], loc = e[1];
+        (loc.students || []).forEach(function(n) {
+          if (!allNames[n]) allNames[n] = [];
+          allNames[n].push(loc.short || lk);
+        });
+      });
+      var entries = Object.entries(allNames).filter(function(e) { return e[1].length > 1; })
+        .sort(function(a, b) { return b[1].length - a[1].length || a[0].localeCompare(b[0]); });
+      if (q) entries = entries.filter(function(e) { return e[0].toLowerCase().includes(q); });
+      document.getElementById('dupStat').innerHTML = '<strong>' + entries.length + '</strong> nama di >1 lokasi';
+      document.getElementById('dupList').innerHTML = entries.length
+        ? entries.map(function(e) { return '<div class="name-row"><div><strong>' + esc(e[0]) + '</strong><div class="locs">' + e[1].map(esc).join(' · ') + '</div></div></div>'; }).join('')
+        : '<div class="empty">Tidak ada</div>';
+    }
+
+    hardReload();
+
+    (function initRange() {
+      document.getElementById('rangeFrom').value = toISO(weekStart);
+      document.getElementById('rangeTo').value = toISO(addDays(weekStart, 6));
+      updateRangeCount();
+    })();
+
+    document.getElementById('dayModal').addEventListener('click', function(e) { if (e.target.id === 'dayModal') closeDayModal(); });
+    document.getElementById('editModal').addEventListener('click', function(e) { if (e.target.id === 'editModal') closeEdit(); });
+  </script>
+</body>
+</html>
